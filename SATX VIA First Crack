@@ -1,0 +1,95 @@
+My first crack at analyzing GTFS data from San Antonio's VIA Metropolitan Transit Agency
+
+### San Antonio VIA Transportation
+# install necessary packages
+library(tidyverse)
+install.packages("stplanr")
+library(stplanr)
+install.packages("osmdata")
+library(osmdata)
+library(sf)
+library(tmap)
+install.packages("tmap")
+library(tmap)
+install.packages("opencv")
+library(opencv)
+getwd()
+
+# Load in relevant data
+trips <- read_csv("trips.txt")
+View(trips)
+routes <- read_csv("routes.txt")
+View(routes)
+stop_times <- read_csv("stop_times.txt", col_types = cols(arrival_time = col_character(),
+                                                          departure_time = col_character()))
+View(stop_times)
+
+# Join the data together to examine number of trips per hour
+stop_times <- stop_times %>%
+  left_join(trips) %>%
+  left_join(routes) %>%
+  select(route_id, route_short_name, trip_id, stop_id, service_id,
+         arrival_time, departure_time, direction_id, shape_id, stop_sequence)
+head(stop_times)
+
+# Examine service_id in trips
+trips %>%
+  group_by(service_id) %>%
+  count(service_id) %>%
+  arrange(desc(n))
+# New variable for service_id 1
+bigger_service <- trips %>%
+  group_by(service_id) %>%
+  count(service_id) %>%
+  arrange(desc(n)) %>%
+  head(1)
+head(bigger_service)
+
+# Filter stop_times to keep only service_id 1
+stop_times <- stop_times %>%
+  filter(
+    stop_sequence == 1 &
+      direction_id == 0 &
+      service_id == bigger_service$service_id
+  )
+head(stop_times)
+
+# Transform the time characters to numbers
+stop_times <- stop_times %>%
+  mutate(
+    arrival_time = ifelse(
+      as.integer(substr(arrival_time, 1, 2)) < 24,
+      as.integer(substr(arrival_time, 1, 2)),
+      as.integer(substr(arrival_time, 1, 2)) > 24),
+    departure_time = ifelse(
+      as.integer(substr(departure_time, 1, 2)) < 24,
+      as.integer(substr(departure_time, 1, 2)),
+      as.integer(substr(departure_time, 1, 2)) > 24)
+    )
+head(stop_times)    
+  
+# Calculate number of trips per route_id per hour
+output_data <- stop_times %>%
+  group_by_at(vars(route_id, route_short_name, arrival_time)) %>%
+  count(arrival_time)
+head(output_data)
+
+# change format of arrival_time 
+output_data <- stop_times %>%
+  group_by_at(vars(route_id, route_short_name, arrival_time)) %>%
+  count(arrival_time) %>%
+  mutate(time_window = paste(arrival_time, '00', sep = ":")) %>%
+  select(route_id, route_short_name, arrival_time, time_window, n)
+head(output_data)
+
+# Visually represent trips per hour for Route 2
+line <- output_data %>%
+  filter(route_id == '2')
+View(line)
+# factorize time_window
+line$time_window <- factor(line$time_window, levels = unique(line$time_window))
+# Create bar chart of Route 2
+Route_2 <- ggplot(line, aes(time_window, y = n)) +
+  geom_bar(stat = 'identity') +
+  theme_bw()  
+Route_2
